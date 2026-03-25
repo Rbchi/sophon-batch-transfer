@@ -168,6 +168,9 @@
           <div class="csv-drop-main">Drop CSV here or click to browse</div>
           <div class="csv-drop-sub">Any column with numeric Token IDs is detected automatically</div>
         </div>
+        <div style="margin-top:10px;text-align:right;">
+          <button class="csv-clear" onclick="downloadSample(event)">↓ Download sample CSV</button>
+        </div>
         <div id="csvPreview" style="display:none">
           <div class="csv-meta" id="csvMeta"></div>
           <div class="token-grid" id="csvGrid"></div>
@@ -251,7 +254,7 @@ async function fetchTokens() {
   if (!owner) { showStatus('error', 'Connect your wallet or enter an owner address.'); return; }
   const btn = document.getElementById('btnFetch');
   btn.disabled = true; btn.textContent = '…';
-  showStatus('pending', 'Fetching token IDs from contract…');
+  showStatus('pending', 'Fetching node IDs from contract…');
   try {
     const contract = new ethers.Contract(CONTRACT, ABI, provider);
     const total = (await contract.totalSupply()).toNumber();
@@ -265,14 +268,14 @@ async function fetchTokens() {
     selectedTokens = new Set(allIds);
     renderPills(allIds, 'tokenGrid');
     updateCount(); updateBtn();
-    showStatus('success', `Found ${allIds.length} token${allIds.length !== 1 ? 's' : ''} owned by ${owner.slice(0,6)}…${owner.slice(-4)}.`);
-  } catch(e) { showStatus('error', e.message || 'Failed to fetch tokens.'); }
+    showStatus('success', `Found ${allIds.length} node${allIds.length !== 1 ? 's' : ''} owned by ${owner.slice(0,6)}…${owner.slice(-4)}.`);
+  } catch(e) { showStatus('error', e.message || 'Failed to fetch nodes.'); }
   btn.disabled = false; btn.textContent = 'Fetch →';
 }
 
 function renderPills(ids, gridId) {
   const grid = document.getElementById(gridId);
-  if (!ids.length) { grid.innerHTML = '<span style="font-size:12px;color:var(--muted)">No tokens found.</span>'; return; }
+  if (!ids.length) { grid.innerHTML = '<span style="font-size:12px;color:var(--muted)">No nodes found.</span>'; return; }
   const MAX = 80;
   let html = ids.slice(0, MAX).map(id =>
     `<span class="pill" data-id="${id}" onclick="togglePill(this)">#${id}</span>`
@@ -302,7 +305,7 @@ function parseManual() {
 function updateCount() {
   const n = selectedTokens.size;
   const b = document.getElementById('countBadge');
-  if (n > 0) { b.style.display = 'inline'; b.textContent = n + (n === 1 ? ' token' : ' tokens'); }
+  if (n > 0) { b.style.display = 'inline'; b.textContent = n + (n === 1 ? ' node' : ' nodes'); }
   else b.style.display = 'none';
 }
 
@@ -316,7 +319,7 @@ async function doTransfer() {
   const to = document.getElementById('toAddr').value.trim();
   if (!to || !userAddr || !selectedTokens.size) return;
   const ids = Array.from(selectedTokens);
-  showStatus('pending', `Sending ${ids.length} token${ids.length > 1 ? 's' : ''}… Confirm in your wallet.`);
+  showStatus('pending', `Sending ${ids.length} node${ids.length > 1 ? 's' : ''}… Confirm in your wallet.`);
   document.getElementById('btnTransfer').disabled = true;
   try {
     const contract = new ethers.Contract(CONTRACT, ABI, signer);
@@ -336,6 +339,16 @@ async function doTransfer() {
     showStatus('error', e?.reason || e?.data?.message || e?.message || 'Transaction failed.');
   }
   updateBtn();
+}
+
+function downloadSample() {
+  const csv = `tokenId\n101\n202\n303\n404\n505`;
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'sophon-token-ids-sample.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 function onDragOver(e) { e.preventDefault(); document.getElementById('csvDrop').classList.add('drag'); }
@@ -386,7 +399,7 @@ function processCSV(file) {
     preview.style.display = 'block';
     const colLabel = hasHeader ? `"${rows[0][bestCol]}"` : `column ${bestCol + 1}`;
     document.getElementById('csvMeta').innerHTML =
-      `<span>${file.name} &nbsp;·&nbsp; ${ids.length} token${ids.length !== 1 ? 's' : ''} from ${colLabel}</span>` +
+      `<span>${file.name} &nbsp;·&nbsp; ${ids.length} node${ids.length !== 1 ? 's' : ''} from ${colLabel}</span>` +
       `<button class="csv-clear" onclick="clearCSV()">Clear</button>`;
 
     // Render pills
@@ -396,7 +409,7 @@ function processCSV(file) {
     document.getElementById('csvGrid').innerHTML = html;
 
     updateCount(); updateBtn();
-    showStatus('success', `Loaded ${ids.length} token ID${ids.length !== 1 ? 's' : ''} from ${file.name}.`);
+    showStatus('success', `Loaded ${ids.length} node${ids.length !== 1 ? 's' : ''} from ${file.name}.`);
   };
   reader.readAsText(file);
 }
