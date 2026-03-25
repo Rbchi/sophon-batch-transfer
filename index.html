@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sophon Batch Transfer</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111;
+    --surface2: #1a1a1a;
+    --border: rgba(255,255,255,0.08);
+    --border-hi: rgba(255,255,255,0.22);
+    --text: #f0f0f0;
+    --muted: #555;
+    --muted2: #888;
+    --accent: #e8ff47;
+    --accent-dim: rgba(232,255,71,0.1);
+    --accent-border: rgba(232,255,71,0.25);
+    --danger: #ff5252;
+    --success: #4cff91;
+    --success-dim: rgba(76,255,145,0.08);
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 56px 20px 80px;
+  }
+  .page { width: 100%; max-width: 600px; }
+  .logo-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+  .logo-label { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted2); }
+  h1 { font-family: var(--mono); font-size: 24px; font-weight: 400; letter-spacing: -.02em; margin-bottom: 8px; }
+  h1 em { color: var(--accent); font-style: normal; }
+  .subtitle { font-size: 13px; color: var(--muted2); font-weight: 300; line-height: 1.6; margin-bottom: 32px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 14px; }
+  .wallet-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 22px; border-bottom: 1px solid var(--border); }
+  .wallet-left { display: flex; align-items: center; gap: 9px; }
+  .w-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; transition: background .2s; }
+  .w-dot.on { background: var(--success); }
+  .w-addr { font-family: var(--mono); font-size: 13px; color: var(--muted2); transition: color .2s; }
+  .w-addr.on { color: var(--text); }
+  .btn-sm { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .07em; text-transform: uppercase; padding: 7px 14px; border-radius: 6px; border: 1px solid var(--border-hi); background: transparent; color: var(--text); cursor: pointer; transition: background .15s; white-space: nowrap; }
+  .btn-sm:hover:not(:disabled) { background: var(--surface2); }
+  .btn-sm:disabled { opacity: .35; cursor: default; }
+  .section { padding: 20px 22px; border-bottom: 1px solid var(--border); }
+  .section:last-child { border-bottom: none; }
+  .field-label { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted2); margin-bottom: 9px; display: flex; align-items: center; justify-content: space-between; }
+  input[type="text"] { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--mono); font-size: 13px; padding: 11px 13px; outline: none; transition: border-color .15s; }
+  input[type="text"]:focus { border-color: var(--border-hi); }
+  input[type="text"]::placeholder { color: var(--muted); }
+  .hint { margin-top: 7px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .token-tabs { display: flex; gap: 4px; margin-bottom: 14px; }
+  .tab { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .07em; text-transform: uppercase; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--muted2); cursor: pointer; transition: all .15s; }
+  .tab.active { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent); }
+  .fetch-panel { display: none; }
+  .fetch-panel.show { display: block; }
+  .fetch-row { display: flex; gap: 8px; align-items: center; }
+  .fetch-row input { flex: 1; }
+  .btn-fetch { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; padding: 11px 16px; border-radius: 8px; border: 1px solid var(--border-hi); background: transparent; color: var(--text); cursor: pointer; white-space: nowrap; transition: background .15s; flex-shrink: 0; }
+  .btn-fetch:hover:not(:disabled) { background: var(--surface2); }
+  .btn-fetch:disabled { opacity: .35; cursor: default; }
+  .manual-panel { display: none; }
+  .manual-panel.show { display: block; }
+  textarea { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-family: var(--mono); font-size: 13px; padding: 11px 13px; outline: none; transition: border-color .15s; resize: none; height: 120px; line-height: 1.8; }
+  textarea:focus { border-color: var(--border-hi); }
+  textarea::placeholder { color: var(--muted); }
+  .token-grid { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; max-height: 130px; overflow-y: auto; }
+  .token-grid::-webkit-scrollbar { width: 4px; }
+  .token-grid::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 2px; }
+  .pill { font-family: var(--mono); font-size: 11px; padding: 3px 8px; border-radius: 20px; background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent-border); cursor: pointer; transition: opacity .12s; user-select: none; }
+  .pill:hover { opacity: .7; }
+  .pill.deselected { background: var(--surface2); color: var(--muted2); border-color: var(--border); }
+  .pill.overflow { background: var(--surface2); color: var(--muted2); border-color: var(--border); cursor: default; }
+  .count-badge { font-size: 11px; font-family: var(--mono); color: var(--accent); background: var(--accent-dim); padding: 2px 8px; border-radius: 20px; border: 1px solid var(--accent-border); }
+  .btn-transfer { width: 100%; background: var(--accent); color: #0a0a0a; border: none; border-radius: 0 0 14px 14px; font-family: var(--mono); font-size: 13px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; padding: 18px; cursor: pointer; transition: opacity .15s, transform .1s; }
+  .btn-transfer:hover:not(:disabled) { opacity: .88; }
+  .btn-transfer:active:not(:disabled) { transform: scale(.997); }
+  .btn-transfer:disabled { opacity: .25; cursor: not-allowed; }
+  .status { margin-top: 14px; padding: 13px 16px; border-radius: 10px; font-family: var(--mono); font-size: 12px; display: none; align-items: flex-start; gap: 10px; line-height: 1.7; word-break: break-all; }
+  .status.show { display: flex; }
+  .status.pending { background: rgba(255,255,255,.03); border: 1px solid var(--border); color: var(--muted2); }
+  .status.success { background: var(--success-dim); border: 1px solid rgba(76,255,145,.2); color: var(--success); }
+  .status.error { background: rgba(255,82,82,.06); border: 1px solid rgba(255,82,82,.2); color: var(--danger); }
+  .spinner { width: 13px; height: 13px; border: 1.5px solid rgba(255,255,255,.1); border-top-color: var(--muted2); border-radius: 50%; animation: spin .8s linear infinite; flex-shrink: 0; margin-top: 2px; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  .tx-link { color: var(--success); text-decoration: none; font-size: 11px; display: block; margin-top: 4px; opacity: .75; }
+  .tx-link:hover { opacity: 1; text-decoration: underline; }
+  .footer-note { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 8px; }
+  .footer-note a { color: var(--muted); border-bottom: 1px solid var(--border); text-decoration: none; padding-bottom: 1px; }
+  .footer-note a:hover { color: var(--muted2); }
+  .csv-panel { display: none; }
+  .csv-panel.show { display: block; }
+  .csv-drop { border: 1px dashed var(--border-hi); border-radius: 10px; padding: 28px 20px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  .csv-drop:hover, .csv-drop.drag { border-color: var(--accent); background: var(--accent-dim); }
+  .csv-icon { font-size: 22px; margin-bottom: 8px; color: var(--muted2); }
+  .csv-drop-main { font-size: 13px; font-weight: 400; color: var(--text); margin-bottom: 4px; }
+  .csv-drop-sub { font-size: 12px; color: var(--muted); }
+  .csv-meta { font-family: var(--mono); font-size: 11px; color: var(--muted2); margin-top: 12px; margin-bottom: 2px; display: flex; align-items: center; justify-content: space-between; }
+  .csv-clear { font-family: var(--mono); font-size: 11px; color: var(--muted); background: transparent; border: none; cursor: pointer; text-decoration: underline; padding: 0; }
+  .csv-clear:hover { color: var(--danger); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="logo-row"><div class="dot"></div><span class="logo-label">Sophon Network</span></div>
+  <h1>Batch <em>Transfer</em> Nodes</h1>
+  <p class="subtitle">Transfer multiple Sophon NFT nodes in one transaction.<br>Auto-fetch your tokens or paste IDs manually.</p>
+
+  <div class="card">
+
+    <div class="wallet-row">
+      <div class="wallet-left">
+        <div class="w-dot" id="wDot"></div>
+        <span class="w-addr" id="wAddr">Not connected</span>
+      </div>
+      <button class="btn-sm" id="btnConnect" onclick="connectWallet()">Connect Wallet</button>
+    </div>
+
+    <div class="section">
+      <div class="field-label">Recipient Address</div>
+      <input type="text" id="toAddr" placeholder="0x…" oninput="updateBtn()" />
+      <p class="hint">The wallet that will receive all transferred nodes.</p>
+    </div>
+
+    <div class="section">
+      <div class="field-label">
+        Token IDs
+        <span class="count-badge" id="countBadge" style="display:none"></span>
+      </div>
+
+      <div class="token-tabs">
+        <button class="tab active" id="tabAuto" onclick="switchTab('auto')">Auto Fetch</button>
+        <button class="tab" id="tabManual" onclick="switchTab('manual')">Manual</button>
+        <button class="tab" id="tabCsv" onclick="switchTab('csv')">CSV</button>
+      </div>
+
+      <div class="fetch-panel show" id="panelAuto">
+        <div class="fetch-row">
+          <input type="text" id="ownerInput" placeholder="Owner address (default: connected wallet)" />
+          <button class="btn-fetch" id="btnFetch" onclick="fetchTokens()" disabled>Fetch →</button>
+        </div>
+        <p class="hint">Reads token ownership directly from the contract.</p>
+        <div class="token-grid" id="tokenGrid"></div>
+      </div>
+
+      <div class="manual-panel" id="panelManual">
+        <textarea id="manualInput" placeholder="101&#10;202&#10;303&#10;&#10;One Token ID per line." oninput="parseManual()"></textarea>
+        <div class="token-grid" id="manualGrid"></div>
+      </div>
+
+      <div class="csv-panel" id="panelCsv">
+        <div class="csv-drop" id="csvDrop" onclick="document.getElementById('csvFile').click()" ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+          <input type="file" id="csvFile" accept=".csv,.txt" style="display:none" onchange="onFileChange(event)" />
+          <div class="csv-icon">⌗</div>
+          <div class="csv-drop-main">Drop CSV here or click to browse</div>
+          <div class="csv-drop-sub">Any column with numeric Token IDs is detected automatically</div>
+        </div>
+        <div id="csvPreview" style="display:none">
+          <div class="csv-meta" id="csvMeta"></div>
+          <div class="token-grid" id="csvGrid"></div>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn-transfer" id="btnTransfer" onclick="doTransfer()" disabled>Transfer Nodes →</button>
+  </div>
+
+  <div class="status" id="status">
+    <div id="statusIcon"></div>
+    <div id="statusMsg"></div>
+  </div>
+
+  <div class="footer-note">
+    Contract:
+    <a href="https://explorer.sophon.xyz/address/0x5F85230BC3bE312B566878f132fdA198F223C917" target="_blank">0x5F85…C917</a>
+    &nbsp;·&nbsp; Sophon Mainnet &nbsp;·&nbsp; Chain ID 50104
+  </div>
+</div>
+
+<script>
+const CONTRACT = '0x5F85230BC3bE312B566878f132fdA198F223C917';
+const EXPLORER = 'https://explorer.sophon.xyz/tx/';
+const SOPHON_CHAIN_ID = 50104;
+const ABI = [
+  'function safeBatchTransferFromWithDedelegate(address from, address to, uint256[] tokenIds) payable',
+  'function tokensOfOwnerIn(address owner, uint256 start, uint256 stop) view returns (uint256[])',
+  'function totalSupply() view returns (uint256)'
+];
+
+let provider, signer, userAddr;
+let selectedTokens = new Set();
+let currentTab = 'auto';
+
+async function connectWallet() {
+  if (!window.ethereum) { showStatus('error', 'No wallet detected. Please install MetaMask.'); return; }
+  try {
+    provider = new ethers.providers.Web3Provider(window.ethereum);
+    await provider.send('eth_requestAccounts', []);
+    const net = await provider.getNetwork();
+    if (net.chainId !== SOPHON_CHAIN_ID) {
+      try {
+        await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0xC3F8' }] });
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+      } catch(e) {
+        showStatus('error', 'Please switch to Sophon Mainnet (Chain ID 50104) in your wallet.');
+        return;
+      }
+    }
+    signer = provider.getSigner();
+    userAddr = await signer.getAddress();
+    document.getElementById('wDot').classList.add('on');
+    const wa = document.getElementById('wAddr');
+    wa.classList.add('on');
+    wa.textContent = userAddr.slice(0,6) + '…' + userAddr.slice(-4);
+    const bc = document.getElementById('btnConnect');
+    bc.textContent = 'Connected'; bc.disabled = true;
+    document.getElementById('btnFetch').disabled = false;
+    updateBtn();
+  } catch(e) { showStatus('error', e.message || 'Connection failed.'); }
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  selectedTokens.clear();
+  updateCount(); updateBtn();
+  document.getElementById('tabAuto').classList.toggle('active', tab === 'auto');
+  document.getElementById('tabManual').classList.toggle('active', tab === 'manual');
+  document.getElementById('tabCsv').classList.toggle('active', tab === 'csv');
+  document.getElementById('panelAuto').classList.toggle('show', tab === 'auto');
+  document.getElementById('panelManual').classList.toggle('show', tab === 'manual');
+  document.getElementById('panelCsv').classList.toggle('show', tab === 'csv');
+}
+
+async function fetchTokens() {
+  if (!provider) return;
+  const ownerRaw = document.getElementById('ownerInput').value.trim();
+  const owner = ownerRaw || userAddr;
+  if (!owner) { showStatus('error', 'Connect your wallet or enter an owner address.'); return; }
+  const btn = document.getElementById('btnFetch');
+  btn.disabled = true; btn.textContent = '…';
+  showStatus('pending', 'Fetching token IDs from contract…');
+  try {
+    const contract = new ethers.Contract(CONTRACT, ABI, provider);
+    const total = (await contract.totalSupply()).toNumber();
+    const CHUNK = 5000;
+    let allIds = [];
+    for (let start = 0; start < total; start += CHUNK) {
+      const stop = Math.min(start + CHUNK, total);
+      const ids = await contract.tokensOfOwnerIn(owner, start, stop);
+      allIds = allIds.concat(ids.map(id => id.toString()));
+    }
+    selectedTokens = new Set(allIds);
+    renderPills(allIds, 'tokenGrid');
+    updateCount(); updateBtn();
+    showStatus('success', `Found ${allIds.length} token${allIds.length !== 1 ? 's' : ''} owned by ${owner.slice(0,6)}…${owner.slice(-4)}.`);
+  } catch(e) { showStatus('error', e.message || 'Failed to fetch tokens.'); }
+  btn.disabled = false; btn.textContent = 'Fetch →';
+}
+
+function renderPills(ids, gridId) {
+  const grid = document.getElementById(gridId);
+  if (!ids.length) { grid.innerHTML = '<span style="font-size:12px;color:var(--muted)">No tokens found.</span>'; return; }
+  const MAX = 80;
+  let html = ids.slice(0, MAX).map(id =>
+    `<span class="pill" data-id="${id}" onclick="togglePill(this)">#${id}</span>`
+  ).join('');
+  if (ids.length > MAX) html += `<span class="pill overflow">+${ids.length - MAX} more</span>`;
+  grid.innerHTML = html;
+}
+
+function togglePill(el) {
+  const id = el.dataset.id;
+  if (selectedTokens.has(id)) { selectedTokens.delete(id); el.classList.add('deselected'); }
+  else { selectedTokens.add(id); el.classList.remove('deselected'); }
+  updateCount(); updateBtn();
+}
+
+function parseManual() {
+  const ids = document.getElementById('manualInput').value
+    .split('\n').map(l => l.trim()).filter(l => l && /^\d+$/.test(l));
+  selectedTokens = new Set(ids);
+  const MAX = 60;
+  let html = ids.slice(0, MAX).map(id => `<span class="pill">#${id}</span>`).join('');
+  if (ids.length > MAX) html += `<span class="pill overflow">+${ids.length - MAX} more</span>`;
+  document.getElementById('manualGrid').innerHTML = html;
+  updateCount(); updateBtn();
+}
+
+function updateCount() {
+  const n = selectedTokens.size;
+  const b = document.getElementById('countBadge');
+  if (n > 0) { b.style.display = 'inline'; b.textContent = n + (n === 1 ? ' token' : ' tokens'); }
+  else b.style.display = 'none';
+}
+
+function updateBtn() {
+  const to = document.getElementById('toAddr').value.trim();
+  document.getElementById('btnTransfer').disabled =
+    !(userAddr && to.startsWith('0x') && to.length === 42 && selectedTokens.size > 0);
+}
+
+async function doTransfer() {
+  const to = document.getElementById('toAddr').value.trim();
+  if (!to || !userAddr || !selectedTokens.size) return;
+  const ids = Array.from(selectedTokens);
+  showStatus('pending', `Sending ${ids.length} token${ids.length > 1 ? 's' : ''}… Confirm in your wallet.`);
+  document.getElementById('btnTransfer').disabled = true;
+  try {
+    const contract = new ethers.Contract(CONTRACT, ABI, signer);
+    const bigIds = ids.map(id => ethers.BigNumber.from(id));
+    const tx = await contract.safeBatchTransferFromWithDedelegate(userAddr, to, bigIds, { value: 0 });
+    showStatus('pending', `Submitted. Waiting for confirmation…<br><a class="tx-link" href="${EXPLORER}${tx.hash}" target="_blank">${tx.hash}</a>`);
+    await tx.wait();
+    showStatus('success', `${ids.length} node${ids.length > 1 ? 's' : ''} transferred successfully.<br><a class="tx-link" href="${EXPLORER}${tx.hash}" target="_blank">View on explorer →</a>`);
+    selectedTokens.clear();
+    document.getElementById('toAddr').value = '';
+    document.getElementById('tokenGrid').innerHTML = '';
+    document.getElementById('manualInput').value = '';
+    document.getElementById('manualGrid').innerHTML = '';
+    document.getElementById('ownerInput').value = '';
+    updateCount();
+  } catch(e) {
+    showStatus('error', e?.reason || e?.data?.message || e?.message || 'Transaction failed.');
+  }
+  updateBtn();
+}
+
+function onDragOver(e) { e.preventDefault(); document.getElementById('csvDrop').classList.add('drag'); }
+function onDragLeave() { document.getElementById('csvDrop').classList.remove('drag'); }
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('csvDrop').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) processCSV(file);
+}
+function onFileChange(e) {
+  const file = e.target.files[0];
+  if (file) processCSV(file);
+}
+function processCSV(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const text = e.target.result;
+    const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+    if (!lines.length) { showStatus('error', 'CSV file is empty.'); return; }
+
+    // Detect delimiter
+    const delim = lines[0].includes('\t') ? '\t' : ',';
+    const rows = lines.map(l => l.split(delim).map(c => c.trim().replace(/^["']|["']$/g, '')));
+
+    // Find columns that look like token IDs (all numeric, > 0 rows)
+    const colCount = Math.max(...rows.map(r => r.length));
+    let bestCol = -1, bestScore = 0;
+    for (let c = 0; c < colCount; c++) {
+      const vals = rows.map(r => r[c] || '').filter(v => v);
+      const numericCount = vals.filter(v => /^\d+$/.test(v)).length;
+      const score = numericCount / vals.length;
+      if (score > bestScore) { bestScore = score; bestCol = c; }
+    }
+
+    // Check if first row is a header
+    const firstCell = rows[0] && rows[0][bestCol] ? rows[0][bestCol] : '';
+    const hasHeader = !/^\d+$/.test(firstCell);
+    const dataRows = hasHeader ? rows.slice(1) : rows;
+
+    const ids = dataRows.map(r => r[bestCol] || '').filter(v => /^\d+$/.test(v));
+    if (!ids.length) { showStatus('error', 'No numeric Token IDs found in the CSV.'); return; }
+
+    selectedTokens = new Set(ids);
+
+    // Show meta
+    const preview = document.getElementById('csvPreview');
+    preview.style.display = 'block';
+    const colLabel = hasHeader ? `"${rows[0][bestCol]}"` : `column ${bestCol + 1}`;
+    document.getElementById('csvMeta').innerHTML =
+      `<span>${file.name} &nbsp;·&nbsp; ${ids.length} token${ids.length !== 1 ? 's' : ''} from ${colLabel}</span>` +
+      `<button class="csv-clear" onclick="clearCSV()">Clear</button>`;
+
+    // Render pills
+    const MAX = 80;
+    let html = ids.slice(0, MAX).map(id => `<span class="pill" data-id="${id}" onclick="togglePill(this)">#${id}</span>`).join('');
+    if (ids.length > MAX) html += `<span class="pill overflow">+${ids.length - MAX} more</span>`;
+    document.getElementById('csvGrid').innerHTML = html;
+
+    updateCount(); updateBtn();
+    showStatus('success', `Loaded ${ids.length} token ID${ids.length !== 1 ? 's' : ''} from ${file.name}.`);
+  };
+  reader.readAsText(file);
+}
+function clearCSV() {
+  selectedTokens.clear();
+  document.getElementById('csvPreview').style.display = 'none';
+  document.getElementById('csvGrid').innerHTML = '';
+  document.getElementById('csvFile').value = '';
+  updateCount(); updateBtn();
+}
+
+function showStatus(type, msg) {
+  const bar = document.getElementById('status');
+  bar.className = 'status show ' + type;
+  document.getElementById('statusMsg').innerHTML = msg;
+  document.getElementById('statusIcon').innerHTML =
+    type === 'pending' ? '<div class="spinner"></div>' : type === 'success' ? '✓' : '✕';
+}
+</script>
+</body>
+</html>
