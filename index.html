@@ -6,7 +6,6 @@
 <title>Sophon Batch Transfer</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-<script src="https://unpkg.com/@walletconnect/ethereum-provider@2.17.0/dist/index.umd.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -291,12 +290,12 @@ async function connectMetaMask() {
 // --- WalletConnect ---
 async function connectWalletConnect() {
   closeModal();
-  showStatus('pending', 'Opening WalletConnect…');
+  showStatus('pending', 'Loading WalletConnect…');
   try {
-    const WCProvider = window.EthereumProvider || (window['@walletconnect/ethereum-provider'] && window['@walletconnect/ethereum-provider'].EthereumProvider);
-    if (!WCProvider) { showStatus('error', 'WalletConnect failed to load. Please try again.'); return; }
+    const { EthereumProvider } = await import('https://esm.sh/@walletconnect/ethereum-provider@2.17.0');
 
-    const wcProvider = await WCProvider.init({
+    showStatus('pending', 'Opening WalletConnect…');
+    const wcProvider = await EthereumProvider.init({
       projectId: WC_PROJECT_ID,
       chains: [SOPHON_CHAIN_ID],
       optionalChains: [1],
