@@ -190,6 +190,14 @@
           <button class="btn-fetch" id="btnFetch" onclick="fetchTokens()" disabled>Fetch →</button>
         </div>
         <p class="hint">Reads token ownership directly from the contract.</p>
+        <div id="quantityRow" style="display:none; margin-top:12px;">
+          <div class="field-label" style="margin-bottom:8px;">How many nodes to transfer?</div>
+          <div class="fetch-row">
+            <input type="number" id="quantityInput" min="1" placeholder="e.g. 160" oninput="applyQuantity()" style="flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-family:var(--mono); font-size:13px; padding:11px 13px; outline:none;" />
+            <button class="btn-fetch" onclick="selectAll()" style="white-space:nowrap;">Select All</button>
+          </div>
+          <p class="hint" id="quantityHint"></p>
+        </div>
         <div class="token-grid" id="tokenGrid"></div>
       </div>
 
@@ -243,6 +251,7 @@ const ABI = [
 
 let provider, signer, userAddr, wcProvider;
 let selectedTokens = new Set();
+let allFetchedIds = [];
 let currentTab = 'auto';
 
 // --- Modal ---
@@ -324,9 +333,40 @@ async function connectWalletConnect() {
   }
 }
 
+function applyQuantity() {
+  const input = document.getElementById('quantityInput');
+  let qty = parseInt(input.value);
+  if (isNaN(qty) || qty < 1) qty = 0;
+  if (qty > allFetchedIds.length) { qty = allFetchedIds.length; input.value = qty; }
+  const selected = allFetchedIds.slice(0, qty);
+  selectedTokens = new Set(selected.map(id => id.toString()));
+  // Update pills visual
+  const grid = document.getElementById('tokenGrid');
+  grid.querySelectorAll('.pill[data-id]').forEach(el => {
+    el.classList.toggle('deselected', !selectedTokens.has(el.dataset.id));
+  });
+  updateQuantityHint(qty, allFetchedIds.length);
+  updateCount(); updateBtn();
+}
+
+function selectAll() {
+  const input = document.getElementById('quantityInput');
+  input.value = allFetchedIds.length;
+  applyQuantity();
+}
+
+function updateQuantityHint(qty, total) {
+  const hint = document.getElementById('quantityHint');
+  if (qty === 0) { hint.textContent = ''; return; }
+  hint.textContent = `Transferring ${qty} of ${total} nodes. The first ${qty} node${qty !== 1 ? 's' : ''} will be selected.`;
+}
+
 function switchTab(tab) {
   currentTab = tab;
   selectedTokens.clear();
+  allFetchedIds = [];
+  document.getElementById('quantityRow').style.display = 'none';
+  document.getElementById('tokenGrid').innerHTML = '';
   updateCount(); updateBtn();
   document.getElementById('tabAuto').classList.toggle('active', tab === 'auto');
   document.getElementById('tabManual').classList.toggle('active', tab === 'manual');
@@ -354,9 +394,16 @@ async function fetchTokens() {
       const ids = await contract.tokensOfOwnerIn(owner, start, stop);
       allIds = allIds.concat(ids.map(id => id.toString()));
     }
+    allFetchedIds = allIds;
     selectedTokens = new Set(allIds);
     renderPills(allIds, 'tokenGrid');
     updateCount(); updateBtn();
+    // Show quantity input
+    const qRow = document.getElementById('quantityRow');
+    qRow.style.display = 'block';
+    document.getElementById('quantityInput').value = allIds.length;
+    document.getElementById('quantityInput').max = allIds.length;
+    updateQuantityHint(allIds.length, allIds.length);
     showStatus('success', `Found ${allIds.length} node${allIds.length !== 1 ? 's' : ''} owned by ${owner.slice(0,6)}…${owner.slice(-4)}.`);
   } catch(e) { showStatus('error', e.message || 'Failed to fetch nodes.'); }
   btn.disabled = false; btn.textContent = 'Fetch →';
