@@ -311,14 +311,18 @@ async function connectWalletConnect() {
 
     await wcProvider.connect();
     provider = new ethers.providers.Web3Provider(wcProvider);
+    await provider.ready;
     const net = await provider.getNetwork();
     if (net.chainId !== SOPHON_CHAIN_ID) {
       try { await wcProvider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0xC3F8' }] }); }
       catch(e) { showStatus('error', 'Please switch to Sophon Mainnet in your wallet.'); return; }
       provider = new ethers.providers.Web3Provider(wcProvider);
+      await provider.ready;
     }
-    signer = provider.getSigner();
-    onConnected(await signer.getAddress());
+    const accounts = await provider.listAccounts();
+    if (!accounts || accounts.length === 0) { showStatus('error', 'No accounts found. Please try again.'); return; }
+    signer = provider.getSigner(accounts[0]);
+    onConnected(accounts[0]);
   } catch(e) {
     if (e?.message?.includes('User rejected') || e?.message?.includes('cancelled')) {
       showStatus('error', '⚠️ WalletConnect cancelled.');
