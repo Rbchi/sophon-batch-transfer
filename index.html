@@ -241,7 +241,7 @@ const ABI = [
   'function totalSupply() view returns (uint256)'
 ];
 
-let provider, signer, userAddr;
+let provider, signer, userAddr, wcProvider;
 let selectedTokens = new Set();
 let currentTab = 'auto';
 
@@ -293,9 +293,8 @@ async function connectWalletConnect() {
   showStatus('pending', 'Loading WalletConnect…');
   try {
     const { EthereumProvider } = await import('https://esm.sh/@walletconnect/ethereum-provider@2.17.0');
-
     showStatus('pending', 'Opening WalletConnect…');
-    const wcProvider = await EthereumProvider.init({
+    wcProvider = await EthereumProvider.init({
       projectId: WC_PROJECT_ID,
       chains: [SOPHON_CHAIN_ID],
       optionalChains: [1],
@@ -308,21 +307,14 @@ async function connectWalletConnect() {
         icons: []
       }
     });
-
     await wcProvider.connect();
-    provider = new ethers.providers.Web3Provider(wcProvider);
-    await provider.ready;
-    const net = await provider.getNetwork();
-    if (net.chainId !== SOPHON_CHAIN_ID) {
-      try { await wcProvider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0xC3F8' }] }); }
-      catch(e) { showStatus('error', 'Please switch to Sophon Mainnet in your wallet.'); return; }
-      provider = new ethers.providers.Web3Provider(wcProvider);
-      await provider.ready;
-    }
-    const accounts = await provider.listAccounts();
+    // Use wcProvider directly for reads too
+    provider = new ethers.providers.Web3Provider(wcProvider, 'any');
+    const accounts = wcProvider.accounts;
     if (!accounts || accounts.length === 0) { showStatus('error', 'No accounts found. Please try again.'); return; }
-    signer = provider.getSigner(accounts[0]);
-    onConnected(accounts[0]);
+    userAddr = ethers.utils.getAddress(accounts[0]);
+    signer = null; // WalletConnect uses wcProvider.request() directly
+    onConnected(userAddr);
   } catch(e) {
     if (e?.message?.includes('User rejected') || e?.message?.includes('cancelled')) {
       showStatus('error', '⚠️ WalletConnect cancelled.');
@@ -419,23 +411,46 @@ async function doTransfer() {
   showStatus('pending', `Sending ${ids.length} node${ids.length > 1 ? 's' : ''}… Confirm in your wallet.`);
   document.getElementById('btnTransfer').disabled = true;
   try {
-    const contract = new ethers.Contract(CONTRACT, ABI, signer);
+    const iface = new ethers.utils.Interface(ABI);
     const bigIds = ids.map(id => ethers.BigNumber.from(id));
-    const tx = await contract.safeBatchTransferFromWithDedelegate(userAddr, to, bigIds, { value: 0 });
-    showStatus('pending', `Submitted. Waiting for confirmation…<br><a class="tx-link" href="${EXPLORER}${tx.hash}" target="_blank">${tx.hash}</a>`);
-    await tx.wait();
-    showStatus('success', `${ids.length} node${ids.length > 1 ? 's' : ''} transferred successfully.<br><a class="tx-link" href="${EXPLORER}${tx.hash}" target="_blank">View on explorer →</a>`);
-    selectedTokens.clear();
-    document.getElementById('toAddr').value = '';
-    document.getElementById('tokenGrid').innerHTML = '';
-    document.getElementById('manualInput').value = '';
-    document.getElementById('manualGrid').innerHTML = '';
-    document.getElementById('ownerInput').value = '';
-    updateCount();
+    const calldata = iface.encodeFunctionData('safeBatchTransferFromWithDedelegate', [userAddr, to, bigIds]);
+
+    let txHash;
+    if (wcProvider) {
+      // WalletConnect: send via raw request
+      txHash = await wcProvider.request({
+        method: 'eth_sendTransaction',
+        params: [{ from: userAddr, to: CONTRACT, data: calldata, value: '0x0' }]
+      });
+    } else {
+      // Browser wallet: use ethers signer
+      const contract = new ethers.Contract(CONTRACT, ABI, signer);
+      const tx = await contract.safeBatchTransferFromWithDedelegate(userAddr, to, bigIds, { value: 0 });
+      txHash = tx.hash;
+      showStatus('pending', `Submitted. Waiting for confirmation…<br><a class="tx-link" href="${EXPLORER}${txHash}" target="_blank">${txHash}</a>`);
+      await tx.wait();
+      showStatus('success', `${ids.length} node${ids.length > 1 ? 's' : ''} transferred successfully.<br><a class="tx-link" href="${EXPLORER}${txHash}" target="_blank">View on explorer →</a>`);
+      resetForm(); updateBtn(); return;
+    }
+
+    showStatus('pending', `Submitted. Waiting for confirmation…<br><a class="tx-link" href="${EXPLORER}${txHash}" target="_blank">${txHash}</a>`);
+    await provider.waitForTransaction(txHash);
+    showStatus('success', `${ids.length} node${ids.length > 1 ? 's' : ''} transferred successfully.<br><a class="tx-link" href="${EXPLORER}${txHash}" target="_blank">View on explorer →</a>`);
+    resetForm();
   } catch(e) {
     showStatus('error', decodeError(e));
   }
   updateBtn();
+}
+
+function resetForm() {
+  selectedTokens.clear();
+  document.getElementById('toAddr').value = '';
+  document.getElementById('tokenGrid').innerHTML = '';
+  document.getElementById('manualInput').value = '';
+  document.getElementById('manualGrid').innerHTML = '';
+  document.getElementById('ownerInput').value = '';
+  updateCount();
 }
 
 function downloadSample() {
