@@ -111,6 +111,14 @@
   .csv-meta { font-family: var(--mono); font-size: 11px; color: var(--muted2); margin-top: 12px; margin-bottom: 2px; display: flex; align-items: center; justify-content: space-between; }
   .csv-clear { font-family: var(--mono); font-size: 11px; color: var(--muted); background: transparent; border: none; cursor: pointer; text-decoration: underline; padding: 0; }
   .csv-clear:hover { color: var(--danger); }
+  /* Mode toggle */
+  .mode-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .mode-option { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .mode-option:hover { border-color: var(--border-hi); background: var(--surface2); }
+  .mode-option.active { border-color: var(--accent-border); background: var(--accent-dim); }
+  .mode-title { font-size: 13px; font-weight: 400; color: var(--text); margin-bottom: 3px; }
+  .mode-option.active .mode-title { color: var(--accent); }
+  .mode-desc { font-size: 11px; color: var(--muted); }
   /* Wallet modal */
   .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center; z-index: 999; }
   .modal-overlay.show { display: flex; }
@@ -171,6 +179,20 @@
       <div class="field-label">Recipient Address</div>
       <input type="text" id="toAddr" placeholder="0x…" oninput="updateBtn()" />
       <p class="hint">The wallet that will receive all transferred nodes.</p>
+    </div>
+
+    <div class="section">
+      <div class="field-label">Transfer Mode</div>
+      <div class="mode-toggle">
+        <div class="mode-option active" id="modeWithDedelegate" onclick="setMode('dedelegate')">
+          <div class="mode-title">With Dedelegate</div>
+          <div class="mode-desc">Nodes are currently delegated</div>
+        </div>
+        <div class="mode-option" id="modeWithout" onclick="setMode('nodedelegate')">
+          <div class="mode-title">Without Dedelegate</div>
+          <div class="mode-desc">Nodes are not delegated</div>
+        </div>
+      </div>
     </div>
 
     <div class="section">
@@ -246,6 +268,7 @@ const SOPHON_CHAIN_ID = 50104;
 const WC_PROJECT_ID = '4a2b720132b615e4c8d40e34663f4c12';
 const ABI = [
   'function safeBatchTransferFromWithDedelegate(address from, address to, uint256[] tokenIds) payable',
+  'function safeBatchTransferFrom(address from, address to, uint256[] tokenIds)',
   'function tokensOfOwnerIn(address owner, uint256 start, uint256 stop) view returns (uint256[])',
   'function totalSupply() view returns (uint256)'
 ];
@@ -254,6 +277,13 @@ let provider, signer, userAddr, wcProvider;
 let selectedTokens = new Set();
 let allFetchedIds = [];
 let currentTab = 'auto';
+let transferMode = 'dedelegate'; // 'dedelegate' | 'nodedelegate'
+
+function setMode(mode) {
+  transferMode = mode;
+  document.getElementById('modeWithDedelegate').classList.toggle('active', mode === 'dedelegate');
+  document.getElementById('modeWithout').classList.toggle('active', mode === 'nodedelegate');
+}
 
 // --- Modal ---
 function openModal() { document.getElementById('walletModal').classList.add('show'); }
@@ -461,19 +491,23 @@ async function doTransfer() {
   try {
     const iface = new ethers.utils.Interface(ABI);
     const bigIds = ids.map(id => ethers.BigNumber.from(id));
-    const calldata = iface.encodeFunctionData('safeBatchTransferFromWithDedelegate', [userAddr, to, bigIds]);
+    const fnName = transferMode === 'dedelegate'
+      ? 'safeBatchTransferFromWithDedelegate'
+      : 'safeBatchTransferFrom';
+    const calldata = iface.encodeFunctionData(fnName, [userAddr, to, bigIds]);
+    const txParams = { from: userAddr, to: CONTRACT, data: calldata, value: '0x0' };
 
     let txHash;
     if (wcProvider) {
-      // WalletConnect: send via raw request
-      txHash = await wcProvider.request({
-        method: 'eth_sendTransaction',
-        params: [{ from: userAddr, to: CONTRACT, data: calldata, value: '0x0' }]
-      });
+      txHash = await wcProvider.request({ method: 'eth_sendTransaction', params: [txParams] });
     } else {
-      // Browser wallet: use ethers signer
       const contract = new ethers.Contract(CONTRACT, ABI, signer);
-      const tx = await contract.safeBatchTransferFromWithDedelegate(userAddr, to, bigIds, { value: 0 });
+      let tx;
+      if (transferMode === 'dedelegate') {
+        tx = await contract.safeBatchTransferFromWithDedelegate(userAddr, to, bigIds, { value: 0 });
+      } else {
+        tx = await contract.safeBatchTransferFrom(userAddr, to, bigIds);
+      }
       txHash = tx.hash;
       showStatus('pending', `Submitted. Waiting for confirmation…<br><a class="tx-link" href="${EXPLORER}${txHash}" target="_blank">${txHash}</a>`);
       await tx.wait();
